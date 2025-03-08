@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>呼吸训练</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #74ebd5, #acb6e5);
+            font-family: 'Roboto', sans-serif;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        #timer {
+            font-size: 36px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+            opacity: 1;
+            transition: opacity 0.5s ease;
+        }
+        #remaining {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        #progress {
+            width: 300px;
+            height: 20px;
+            border-radius: 10px;
+            background: #e0e0e0;
+            transition: value 0.5s ease;
+        }
+        #progress::-webkit-progress-bar {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+        #progress::-webkit-progress-value {
+            background: linear-gradient(to right, #74ebd5, #acb6e5);
+            border-radius: 10px;
+        }
+        .button-group {
+            margin-top: 20px;
+        }
+        button {
+            padding: 12px 30px;
+            font-size: 18px;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: transform 0.3s ease, background 0.3s ease;
+            margin: 0 10px;
+        }
+        #startBtn { background: #74ebd5; }
+        #pauseBtn { background: #ffca28; }
+        #stopBtn { background: #ef5350; }
+        button:hover {
+            transform: scale(1.05);
+        }
+        #startBtn:hover { background: #acb6e5; }
+        #pauseBtn:hover { background: #ffd54f; }
+        #stopBtn:hover { background: #ef7775; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="timer">准备开始</div>
+        <div id="remaining"></div>
+        <progress id="progress" value="0" max="100"></progress>
+        <div class="button-group">
+            <button id="startBtn" onclick="startTraining()">开始训练</button>
+            <button id="pauseBtn" onclick="togglePause()" disabled>暂停</button>
+            <button id="stopBtn" onclick="stopTraining()" disabled>停止</button>
+        </div>
+    </div>
+
+    <audio id="inhale" src="inhale.mp3"></audio>
+    <audio id="hold" src="hold.mp3"></audio>
+    <audio id="exhale" src="exhale.mp3"></audio>
+    <audio id="tick" src="tick.mp3"></audio>
+
+    <script>
+        const inhaleAudio = document.getElementById("inhale");
+        const holdAudio = document.getElementById("hold");
+        const exhaleAudio = document.getElementById("exhale");
+        const tickAudio = document.getElementById("tick");
+        const allAudios = [inhaleAudio, holdAudio, exhaleAudio, tickAudio];
+
+        let isPaused = false;
+        let isStopped = false;
+        let pausePromise = null;
+
+        async function countdown(action, seconds, audio) {
+            const timer = document.getElementById("timer");
+            if (audio && !isStopped) {
+                audio.currentTime = 0;
+                audio.play();
+            }
+            for (let i = seconds; i >= 0 && !isStopped; i--) {
+                if (isPaused) {
+                    allAudios.forEach(a => a.pause()); // 暂停所有音频
+                    await new Promise(resolve => pausePromise = resolve);
+                    if (!isStopped && audio) audio.play(); // 继续时恢复音频
+                }
+                timer.textContent = `${action} ${i}秒`;
+                timer.style.opacity = "0.5";
+                if (i > 0 && tickAudio && !isStopped) {
+                    tickAudio.currentTime = 0;
+                    tickAudio.play();
+                }
+                await new Promise(resolve => setTimeout(() => {
+                    timer.style.opacity = "1";
+                    resolve();
+                }, 1000));
+            }
+        }
+
+        async function startTraining() {
+            const progress = document.getElementById("progress");
+            const remaining = document.getElementById("remaining");
+            const startBtn = document.getElementById("startBtn");
+            const pauseBtn = document.getElementById("pauseBtn");
+            const stopBtn = document.getElementById("stopBtn");
+
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+            stopBtn.disabled = false;
+            isStopped = false;
+            isPaused = false;
+
+            for (let section = 1; section <= 3 && !isStopped; section++) {
+                await countdown(`准备第${section}节`, 5);
+                for (let cycle = 1; cycle <= 25 && !isStopped; cycle++) {
+                    remaining.textContent = `第${section}节，剩余${25 - cycle}次`;
+                    await countdown("吸气", 8, inhaleAudio);
+                    await countdown("屏息", 5, holdAudio);
+                    await countdown("呼气", 3, exhaleAudio);
+                    if (!isPaused && !isStopped) {
+                        progress.value = (cycle / 25) * 100; // 只在非暂停/非停止时更新进度条
+                    }
+                }
+                if (!isStopped) progress.value = 0;
+                remaining.textContent = "";
+                if (section < 3 && !isStopped) await countdown(`第${section}节完成，休息`, 0);
+            }
+            if (!isStopped) {
+                document.getElementById("timer").textContent = "训练完成！";
+            }
+            resetButtons();
+        }
+
+        function togglePause() {
+            const pauseBtn = document.getElementById("pauseBtn");
+            isPaused = !isPaused;
+            pauseBtn.textContent = isPaused ? "继续" : "暂停";
+            if (!isPaused && pausePromise) {
+                pausePromise();
+                pausePromise = null;
+            }
+        }
+
+        function stopTraining() {
+            isStopped = true;
+            isPaused = false;
+            allAudios.forEach(a => {
+                a.pause();
+                a.currentTime = 0; // 停止并重置音频
+            });
+            if (pausePromise) {
+                pausePromise();
+                pausePromise = null;
+            }
+            document.getElementById("timer").textContent = "准备开始";
+            document.getElementById("remaining").textContent = "";
+            document.getElementById("progress").value = 0;
+            resetButtons();
+        }
+
+        function resetButtons() {
+            const startBtn = document.getElementById("startBtn");
+            const pauseBtn = document.getElementById("pauseBtn");
+            const stopBtn = document.getElementById("stopBtn");
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            pauseBtn.textContent = "暂停";
+            stopBtn.disabled = true;
+        }
+    </script>
+</body>
+</html>
