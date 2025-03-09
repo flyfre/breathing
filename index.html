@@ -205,7 +205,7 @@
         };
 
         const state = {
-            breathing: { section: 1, cycle: 1, paused: false, stopped: true, pauseResolve: null, isFirstStart: true },
+            breathing: { section: 1, cycle: 1, isRunning: false, isPaused: false, isFirstStart: true, countdownId: null },
             stretching: { section: 0, action: 0, isRunning: false, isPaused: false, isFirstStart: true, countdownId: null }
         };
 
@@ -214,55 +214,47 @@
             { name: "拍打操", actions: ["捶打左肩", "捶打右肩", "拍左肘部弯", "拍右肘弯部", "拍左腋下", "拍右腋下", "拍左手臂", "拍右手臂", "拍后腰部", "拍肚子", "拍左腹股沟", "拍右腹股沟", "拍腿弯部", "拍左腿", "拍右腿"] }
         ];
 
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
         async function countdown(type, action, seconds, audio) {
             const { timer } = elements[type];
             const s = state[type];
             const allAudios = Object.values(audios[type]);
 
-            if (audio && (type === "breathing" ? !s.stopped : s.isRunning)) {
+            if (s.countdownId) clearInterval(s.countdownId); // 清理旧倒计时
+            s.countdownId = null;
+
+            if (audio && s.isRunning) {
+                allAudios.forEach(a => { a.pause(); a.currentTime = 0; }); // 停止所有音频
                 audio.currentTime = 0;
                 audio.play();
             }
 
-            let i = seconds;
-            const tick = () => {
-                if (i < 0 || (type === "breathing" ? s.stopped : !s.isRunning)) {
-                    clearInterval(s.countdownId);
-                    s.countdownId = null;
-                    return;
-                }
-
-                if (type === "breathing" ? s.paused : s.isPaused) {
+            for (let i = seconds; i >= 0 && s.isRunning; i--) {
+                if (s.isPaused) {
                     allAudios.forEach(a => a.pause());
-                    return;
+                    await new Promise(resolve => s.pauseResolve = resolve);
+                    if (s.isRunning && audio && audio.paused) audio.play(); // 恢复动作音频
                 }
-
                 timer.textContent = `${action} ${i}秒`;
                 timer.classList.add("fade");
-                if (i > 0 && audios[type].tick && (type === "breathing" ? !s.stopped : s.isRunning)) {
+                if (i > 0 && audios[type].tick && s.isRunning) {
                     audios[type].tick.currentTime = 0;
                     audios[type].tick.play();
                 }
-                setTimeout(() => timer.classList.remove("fade"), 500);
-                i--;
-            };
-
-            return new Promise(resolve => {
-                if (s.countdownId) clearInterval(s.countdownId); // 清理旧倒计时
-                s.countdownId = setInterval(() => {
-                    tick();
-                    if (i < 0) resolve();
-                }, 1000);
-                tick(); // 立即执行一次
-            });
+                await sleep(1000);
+                timer.classList.remove("fade");
+            }
         }
 
-        // 呼吸训练逻辑（保持不变）
         async function startBreathingTraining() {
             const { progress, remaining, timer, buttons } = elements.breathing;
             const s = state.breathing;
-            s.stopped = false;
-            s.paused = false;
+            stop("breathing"); // 确保停止旧线程
+            s.isRunning = true;
+            s.isPaused = false;
             setButtons("breathing", true);
 
             if (s.isFirstStart) {
@@ -270,53 +262,55 @@
                 s.isFirstStart = false;
             }
 
-            if (s.stopped) return;
+            if (!s.isRunning) return;
 
-            const stages = [["吸气", 8, audios.breathing.inhale], ["屏息", 5, audios.breathing.hold], ["呼气", 3, audios.breathing.exhale]];
+            const stages = [
+                ["吸气", 8, audios.breathing.inhale],
+                ["屏息", 5, audios.breathing.hold],
+                ["呼气", 3, audios.breathing.exhale]
+            ];
             let currentSection = s.section;
             let currentCycle = s.cycle;
 
             remaining.textContent = `第${currentSection}节，剩余${25 - (currentCycle - 1)}次`;
-            while (currentSection <= 3 && !s.stopped) {
-                for (; currentCycle <= 25 && !s.stopped; currentCycle++) {
+            while (currentSection <= 3 && s.isRunning) {
+                for (; currentCycle <= 25 && s.isRunning; currentCycle++) {
                     remaining.textContent = `第${currentSection}节，剩余${25 - (currentCycle - 1)}次`;
                     for (const [action, seconds, audio] of stages) {
                         await countdown("breathing", action, seconds, audio);
-                        if (s.stopped) break;
+                        if (!s.isRunning) break;
                     }
-                    if (!s.paused && !s.stopped) {
+                    if (!s.isPaused && s.isRunning) {
                         progress.value = (currentSection - 1) * 25 + (currentCycle - 1);
                         s.cycle = currentCycle;
                     }
                 }
-                if (currentSection < 3 && !s.stopped) {
+                if (currentSection < 3 && s.isRunning) {
                     remaining.textContent = "";
                     await countdown("breathing", `第${currentSection}节完成，休息`, 30);
                     currentSection++;
                     currentCycle = 1;
                     s.section = currentSection;
                     s.cycle = currentCycle;
-                    if (!s.stopped) remaining.textContent = `第${currentSection}节，剩余${25}次`;
+                    if (s.isRunning) remaining.textContent = `第${currentSection}节，剩余${25}次`;
                 } else {
                     break;
                 }
             }
-            if (!s.stopped && currentSection > 3) {
+            if (s.isRunning && currentSection > 3) {
                 timer.textContent = "训练完成！";
                 progress.value = 74;
                 remaining.textContent = "";
             }
 
-            if (!s.stopped) setButtons("breathing", false);
+            if (s.isRunning) setButtons("breathing", false);
+            s.isRunning = false;
         }
 
-        // 重写的拉伸训练逻辑
         async function startStretchingTraining() {
             const { progress, remaining, timer, buttons } = elements.stretching;
             const s = state.stretching;
-
-            // 停止任何正在运行的倒计时
-            stop("stretching");
+            stop("stretching"); // 确保停止旧线程
             s.isRunning = true;
             s.isPaused = false;
             setButtons("stretching", true);
@@ -330,33 +324,50 @@
 
             const section = stretchingSections[s.section];
             progress.max = section.actions.length - 1;
-            const currentAction = section.actions[s.action];
+            let currentActionIndex = s.action;
 
-            // 更新显示
-            remaining.textContent = `${section.name}，剩余${section.actions.length - s.action - 1}个动作`;
-            timer.textContent = `${currentAction} 60秒`;
+            while (currentActionIndex < section.actions.length && s.isRunning) {
+                const currentAction = section.actions[currentActionIndex];
+                remaining.textContent = `${section.name}，剩余${section.actions.length - currentActionIndex - 1}个动作`;
+                timer.textContent = `${currentAction} 60秒`;
+                await countdown("stretching", currentAction, 60, audios.stretching[currentAction]);
 
-            // 执行当前动作
-            await countdown("stretching", currentAction, 60, audios.stretching[currentAction]);
+                if (!s.isPaused && s.isRunning) {
+                    currentActionIndex++;
+                    s.action = currentActionIndex;
+                    progress.value = currentActionIndex;
+                }
+            }
 
-            if (!s.isPaused && s.isRunning) {
-                progress.value = s.action;
+            if (s.isRunning && currentActionIndex >= section.actions.length) {
+                timer.textContent = "本节训练完成！";
+                remaining.textContent = "";
             }
 
             if (s.isRunning) setButtons("stretching", false);
+            s.isRunning = false;
         }
 
-        function updateStretchingDisplay() {
-            const { progress, remaining, timer } = elements.stretching;
-            const s = state.stretching;
-            const section = stretchingSections[s.section];
-            progress.max = section.actions.length - 1;
-            const currentAction = section.actions[s.action];
-            remaining.textContent = `${section.name}，剩余${section.actions.length - s.action - 1}个动作`;
-            timer.textContent = `${currentAction} 60秒`;
+        function updateDisplay(type) {
+            const { progress, remaining, timer } = elements[type];
+            const s = state[type];
+            if (type === "breathing") {
+                if (progress.value >= 74) {
+                    timer.textContent = "训练完成！";
+                    remaining.textContent = "";
+                } else {
+                    remaining.textContent = `第${s.section}节，剩余${25 - (s.cycle - 1)}次`;
+                    timer.textContent = "吸气 8秒";
+                }
+            } else {
+                const section = stretchingSections[s.section];
+                progress.max = section.actions.length - 1;
+                const currentAction = section.actions[s.action];
+                remaining.textContent = `${section.name}，剩余${section.actions.length - s.action - 1}个动作`;
+                timer.textContent = `${currentAction} 60秒`;
+            }
         }
 
-        // 调整进度条
         function adjustProgress(type, value) {
             const { progress } = elements[type];
             const s = state[type];
@@ -367,76 +378,49 @@
                 s.section = Math.min(3, Math.max(1, Math.floor(value / totalCyclesPerSection) + 1));
                 s.cycle = Math.min(totalCyclesPerSection, Math.max(1, (value % totalCyclesPerSection) + 1));
                 progress.value = value;
-                updateBreathingDisplay();
             } else {
                 s.action = Math.min(Math.max(parseInt(value), 0), stretchingSections[s.section].actions.length - 1);
                 progress.value = s.action;
-                updateStretchingDisplay();
             }
+            updateDisplay(type);
         }
 
-        function updateBreathingDisplay() {
-            const { progress, remaining, timer } = elements.breathing;
-            const s = state.breathing;
-            if (progress.value >= 74) {
-                timer.textContent = "训练完成！";
-                remaining.textContent = "";
-            } else {
-                remaining.textContent = `第${s.section}节，剩余${25 - (s.cycle - 1)}次`;
-                timer.textContent = "吸气 8秒";
-            }
-        }
-
-        // 切换拉伸训练节
-        function changeStretchingSection(delta) {
+        function changeSection(delta) {
             const s = state.stretching;
             stop("stretching");
             s.section = Math.max(0, Math.min(s.section + delta, stretchingSections.length - 1));
             s.action = 0;
             elements.stretching.progress.max = stretchingSections[s.section].actions.length - 1;
             elements.stretching.progress.value = 0;
-            updateStretchingDisplay();
+            updateDisplay("stretching");
         }
 
-        // 暂停/继续
         function togglePause(type) {
             const s = state[type];
-            if (type === "breathing") {
-                s.paused = !s.paused;
-                elements[type].buttons[1].textContent = s.paused ? "继续" : "暂停";
-                if (!s.paused && s.pauseResolve) {
-                    s.pauseResolve();
-                    s.pauseResolve = null;
-                }
-            } else {
-                s.isPaused = !s.isPaused;
-                elements[type].buttons[1].textContent = s.isPaused ? "继续" : "暂停";
-                if (!s.isPaused && s.countdownId) {
-                    const allAudios = Object.values(audios[type]);
-                    allAudios.forEach(a => { if (!a.paused) a.play(); });
-                }
+            s.isPaused = !s.isPaused;
+            elements[type].buttons[1].textContent = s.isPaused ? "继续" : "暂停";
+            if (!s.isPaused && s.pauseResolve) {
+                s.pauseResolve();
+                s.pauseResolve = null;
             }
         }
 
-        // 停止
         function stop(type) {
             const s = state[type];
-            if (type === "breathing") {
-                s.stopped = true;
-                s.paused = false;
-            } else {
-                s.isRunning = false;
-                s.isPaused = false;
-            }
+            s.isRunning = false;
+            s.isPaused = false;
             if (s.countdownId) {
                 clearInterval(s.countdownId);
                 s.countdownId = null;
             }
             Object.values(audios[type]).forEach(a => { a.pause(); a.currentTime = 0; });
+            if (s.pauseResolve) {
+                s.pauseResolve();
+                s.pauseResolve = null;
+            }
             setButtons(type, false);
         }
 
-        // 停止并重置
         function stopTraining(type) {
             const { progress, timer, remaining } = elements[type];
             stop(type);
@@ -455,7 +439,6 @@
             }
         }
 
-        // 设置按钮状态
         function setButtons(type, active) {
             const buttons = elements[type].buttons;
             buttons[0].disabled = active;
@@ -464,7 +447,6 @@
             buttons[2].disabled = !active;
         }
 
-        // 事件绑定
         function bindEvents() {
             elements.breathing.buttons[0].addEventListener("click", startBreathingTraining);
             elements.breathing.buttons[1].addEventListener("click", () => togglePause("breathing"));
@@ -474,8 +456,8 @@
             elements.stretching.buttons[0].addEventListener("click", startStretchingTraining);
             elements.stretching.buttons[1].addEventListener("click", () => togglePause("stretching"));
             elements.stretching.buttons[2].addEventListener("click", () => stopTraining("stretching"));
-            elements.stretching.sectionButtons[0].addEventListener("click", () => changeStretchingSection(-1));
-            elements.stretching.sectionButtons[1].addEventListener("click", () => changeStretchingSection(1));
+            elements.stretching.sectionButtons[0].addEventListener("click", () => changeSection(-1));
+            elements.stretching.sectionButtons[1].addEventListener("click", () => changeSection(1));
             elements.stretching.progress.addEventListener("input", e => adjustProgress("stretching", e.target.value));
         }
 
