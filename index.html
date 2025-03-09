@@ -143,8 +143,7 @@
     <audio id="pat-right-arm" src="pat-right-arm.mp3"></audio>
     <audio id="pat-lower-back" src="pat-lower-back.mp3"></audio>
     <audio id="pat-stomach" src="pat-stomach.mp3"></audio>
-    <audio id="pat-left-groin" src="pat-left-groin.mp3"></audio>
-    <audio id="pat-right-groin" src="pat-right-groin.mp3"></audio>
+    <audio id="pat-groin" src="pat-left-groin.mp3"></audio> <!-- 修改为拍腹股沟 -->
     <audio id="pat-leg-bend" src="pat-leg-bend.mp3"></audio>
     <audio id="pat-left-leg" src="pat-left-leg.mp3"></audio>
     <audio id="pat-right-leg" src="pat-right-leg.mp3"></audio>
@@ -195,8 +194,7 @@
                 "拍右手臂": document.getElementById("pat-right-arm"),
                 "拍后腰部": document.getElementById("pat-lower-back"),
                 "拍肚子": document.getElementById("pat-stomach"),
-                "拍左腹股沟": document.getElementById("pat-left-groin"),
-                "拍右腹股沟": document.getElementById("pat-right-groin"),
+                "拍腹股沟": document.getElementById("pat-groin"), // 修改为拍腹股沟
                 "拍腿弯部": document.getElementById("pat-leg-bend"),
                 "拍左腿": document.getElementById("pat-left-leg"),
                 "拍右腿": document.getElementById("pat-right-leg"),
@@ -211,7 +209,7 @@
 
         const stretchingSections = [
             { name: "肩颈锻炼", actions: ["低头", "左侧低头", "右侧低头", "左倾头部", "右倾头部", "抬头", "左侧抬头", "右侧抬头", "左胸锁乳突肌", "右胸锁乳突肌"] },
-            { name: "拍打操", actions: ["捶打左肩", "捶打右肩", "拍左肘部弯", "拍右肘弯部", "拍左腋下", "拍右腋下", "拍左手臂", "拍右手臂", "拍后腰部", "拍肚子", "拍左腹股沟", "拍右腹股沟", "拍腿弯部", "拍左腿", "拍右腿"] }
+            { name: "拍打操", actions: ["捶打左肩", "捶打右肩", "拍左肘部弯", "拍右肘弯部", "拍左腋下", "拍右腋下", "拍左手臂", "拍右手臂", "拍后腰部", "拍肚子", "拍腹股沟", "拍腿弯部", "拍左腿", "拍右腿"] } // 去掉拍右腹股沟，改拍左腹股沟为拍腹股沟
         ];
 
         function sleep(ms) {
